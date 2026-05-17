@@ -3,7 +3,7 @@ fitness_criterion     = max
 fitness_threshold     = 250.0
 pop_size              = 150
 reset_on_extinction   = False
-no_fitness_termination = False
+no_fitness_termination = True
 
 [DefaultGenome]
 # Network topology

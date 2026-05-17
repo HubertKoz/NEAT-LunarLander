@@ -12,13 +12,15 @@ W przeciwieństwie do klasycznych metod uczenia ze wzmocnieniem, gdzie architekt
 
 ### 1. Inżynieria Funkcji Przystosowania (Fitness Function Engineering)
 
-Sercem projektu jest badanie wpływu kryteriów oceny na zachowanie agentów. Architektura pozwala na dynamiczne podmienianie strategii nagradzania. Przetestować można trzy różne filozofie przetrwania:
+Sercem projektu jest badanie wpływu kryteriów oceny na zachowanie agentów. Architektura pozwala na dynamiczne podmienianie strategii nagradzania. W projekcie zaimplementowano pięć strategii funkcji przystosowania:
 
 | Strategia | Identyfikator | Logika |
 |---|---|---|
-| **Domyślna** | `"default"` | Natywny system nagród środowiska (punkt lądowania + oszczędność paliwa) |
-| **Presja Czasu** | `"penalty_time"` | Ciągła kara `−0.2` za każdy krok w powietrzu — wymusza agresywny, szybki styl lądowania |
-| **Stabilizacja** | `"penalty_angle"` | Kara `−50 × |kąt|` przy kontakcie nogi z ziemią — promuje idealne, pionowe podejście |
+| **Domyślna** | `"default"` | Natywny system nagród środowiska Gymnasium |
+| **Presja czasu** | `"penalty_time"` | Stała kara `−0.2` za każdy krok symulacji, zachęcająca do szybszego zakończenia epizodu |
+| **Stabilizacja kąta** | `"penalty_angle"` | Kara za przechylenie lądownika w momencie kontaktu z podłożem |
+| **Jakość lądowania** | `"landing_quality"` | Kara za odległość od środka, prędkość i przechylenie oraz bonus za stabilny kontakt obu nóg |
+| **Centrowanie lądowania** | `"centered_landing"` | Silniejsza kara za oddalenie od środka lądowiska |
 
 Zmiana strategii nie wymaga modyfikacji kodu — wystarczy edytować pole `fitness_strategy` w pliku `config/simulation_config.json`.
 
@@ -45,9 +47,15 @@ project/
 │   ├── neat_config.txt          # parametry algorytmu NEAT (rozmiar populacji, mutacje, speciacja)
 │   └── simulation_config.json   # flagi eksperymentu (strategia, seedy, render, checkpointy)
 ├── src/
-│   ├── fitness_functions.py     # 3 strategie funkcji przystosowania + słownik FITNESS_STRATEGIES
+│   ├── fitness_functions.py     # 5 strategii funkcji przystosowania + słownik FITNESS_STRATEGIES
+│   ├── experiment_logger.py     # zapis konfiguracji i statystyk eksperymentu
 │   ├── simulation.py            # klasa LunarSimulation — pętla epizodu Gymnasium
 │   └── visualization.py        # wykresy postępu treningu i topologii sieci
+├── scripts/
+│   └── summarize_results.py     # generuje summary.csv i wykres porównawczy
+├── results/
+│   └── <fitness_strategy>/      # wyniki osobnych eksperymentów
+├── EXPERIMENTS.md               # szczegółowa analiza wyników
 ├── main.py                      # orchestracja: NEAT loop, ParallelEvaluator, checkpointy
 └── requirements.txt
 ```
@@ -110,13 +118,14 @@ Kluczowe parametry algorytmu:
 | Parametr | Wartość | Uzasadnienie |
 |---|---|---|
 | `pop_size` | 150 | Wystarczająca różnorodność bez nadmiernego kosztu obliczeniowego |
-| `fitness_threshold` | 250.0 | Powyżej progu „rozwiązanego" (200) z marginesem na stabilność |
+| `fitness_threshold` | 250.0 | Próg referencyjny powyżej progu „rozwiązanego" środowiska. Przy `no_fitness_termination = True` nie zatrzymuje eksperymentu wcześniej |
 | `num_hidden` | 0 | Start z minimalną siecią — NEAT sam dodaje węzły |
 | `initial_connection` | `full_direct` | Pełne połączenie wejść z wyjściami na start |
 | `activation_default` | `tanh` | Zablokowane na tanh (stabilne gradienty, wyjście w \[−1, 1\]) |
 | `elitism` | 2 | Top 2 genomy każdego gatunku przechodzą bez mutacji |
 | `max_stagnation` | 20 | Gatunek ma 20 generacji na poprawę zanim zostanie usunięty |
 | `compatibility_threshold` | 3.0 | Próg dystansu genomicznego przy tworzeniu gatunków |
+| `no_fitness_termination` | `True` | Wymusza pełne 300 generacji dla każdego eksperymentu, nawet jeśli zostanie osiągnięty `fitness_threshold` |
 
 ---
 
@@ -129,7 +138,7 @@ Kluczowe parametry algorytmu:
     "num_eval_runs": 3,
     "use_fixed_seeds": true,
     "fixed_seeds": [42, 123, 999],
-    "fitness_strategy": "penalty_angle"
+    "fitness_strategy": "default"
   },
   "neat_runtime": {
     "checkpoint_generation_interval": 10,
@@ -141,7 +150,7 @@ Kluczowe parametry algorytmu:
 
 | Parametr | Opis |
 |---|---|
-| `fitness_strategy` | `"default"` / `"penalty_time"` / `"penalty_angle"` |
+| `fitness_strategy` | `"default"` / `"penalty_time"` / `"penalty_angle"` / `"landing_quality"` / `"centered_landing"` |
 | `use_fixed_seeds` | `true` → stałe seedy (porównywalność); `false` → zmienne seedy (generalizacja) |
 | `fixed_seeds` | Lista seedów środowiska — jeden per próba ewaluacyjna |
 | `num_eval_runs` | Liczba prób per genom (fitness = średnia) |
@@ -182,7 +191,7 @@ Program automatycznie:
 2. Wyświetla statystyki po każdej generacji
 3. Renderuje najlepszego agenta generacji (jeśli `render_best_after_generation: true`)
 4. Zapisuje checkpoint co `checkpoint_generation_interval` generacji
-5. Po zakończeniu zapisuje `fitness_history.png` i `winner_network.png`
+5. Po zakończeniu zapisuje wyniki do folderu results/<fitness_strategy>/, w tym fitness_history.png, winner_network.png, training_stats.csv i config_used.json.
 
 ### Wznowienie przerwanego treningu
 
@@ -196,10 +205,30 @@ Program odnajdzie plik `neat-checkpoint-N` z najwyższym `N` i wznowi ewolucję.
 
 ## Wyniki i Wizualizacje
 
-Po zakończeniu treningu generowane są dwa pliki PNG:
+Wyniki są zapisywane w folderze odpowiadającym użytej strategii fitnessu:
 
-- **`fitness_history.png`** — wykres postępu per generacja: linia maksymalnego fitnessu, linia średniego fitnessu oraz pasmo odchylenia standardowego. Pozioma linia przerywana oznacza próg „rozwiązanego" środowiska (200 pkt).
-- **`winner_network.png`** — topologia sieci zwycięskiego genomu: węzły wejściowe (zielone), ukryte (niebieskie), wyjściowe (łososiowe); krawędzie niebieskie = wagi dodatnie, czerwone = ujemne; grubość ∝ |waga|.
+```text
+results/<fitness_strategy>/
+```
+
+Po zakończeniu każdego treningu generowane są 4 pliki:
+
+- **fitness_history.png** — wykres postępu per generacja: linia maksymalnego fitnessu, linia średniego fitnessu oraz pasmo odchylenia standardowego. Pozioma linia przerywana oznacza próg „rozwiązanego" środowiska (200 pkt).
+- **winner_network.png** — topologia sieci zwycięskiego genomu: węzły wejściowe (zielone), ukryte (niebieskie), wyjściowe (łososiowe); krawędzie niebieskie = wagi dodatnie, czerwone = ujemne; grubość ∝ |waga|.
+- **training_stats.csv** — tabela z wartościami best_fitness, mean_fitness i std_fitness dla każdej generacji.
+- **config_used.json** — konfiguracja użyta do wygenerowania danego eksperymentu.
+
+Do zbiorczego porównania eksperymentów służy skrypt:
+
+```bash
+python scripts/summarize_results.py
+```
+Tworzy on:
+
+- **results/summary.csv** — zbiorcze podsumowanie wyników,
+- **results/best_fitness_comparison.png** — wykres porównujący strategie.
+
+Szczegółowa analiza eksperymentów znajduje się w [`EXPERIMENTS.md`](EXPERIMENTS.md).
 
 ---
 
@@ -208,5 +237,5 @@ Po zakończeniu treningu generowane są dwa pliki PNG:
 System został zaprojektowany w sposób modułowy, co otwiera drogę do dalszych badań:
 
 - **Sieci rekurencyjne:** Zamiana `neat.nn.FeedForwardNetwork` na `neat.nn.RecurrentNetwork` oraz ustawienie `feed_forward = False` w `neat_config.txt` pozwoli agentom na posiadanie pamięci krótkotrwałej — bez żadnych zmian w pozostałej architekturze.
-- **Nowe strategie nagrody:** Wystarczy dopisać funkcję do `src/fitness_functions.py` i dodać jej klucz do słownika `FITNESS_STRATEGIES`.
+- **Dalsze strategie nagrody:** Projekt został rozszerzony o strategie `landing_quality` i `centered_landing`, ale można dalej testować inne warianty reward shapingu, np. osobne kary za zużycie paliwa, prędkość pionową przy kontakcie z ziemią albo bonus wyłącznie za poprawne zakończenie epizodu.
 - **Inne środowiska Gymnasium:** Klasa `LunarSimulation` może być zastąpiona analogiczną klasą dla dowolnego środowiska dyskretnego — jedyną zmianą jest liczba wejść/wyjść w `neat_config.txt`.

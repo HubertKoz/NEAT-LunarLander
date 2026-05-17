@@ -3,12 +3,16 @@
     "max_steps_per_episode": 500,
     "num_eval_runs": 3,
     "use_fixed_seeds": true,
-    "fixed_seeds": [42, 123, 999],
-    "fitness_strategy": "default"
+    "fixed_seeds": [
+      42,
+      123,
+      999
+    ],
+    "fitness_strategy": "penalty_time"
   },
   "neat_runtime": {
     "checkpoint_generation_interval": 10,
     "resume_from_latest_checkpoint": false,
-    "render_best_after_generation": true
+    "render_best_after_generation": false
   }
 }

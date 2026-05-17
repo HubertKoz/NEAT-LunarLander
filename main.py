@@ -26,6 +26,7 @@ import neat.nn
 
 from src.simulation import LunarSimulation
 from src.visualization import plot_fitness_history, visualize_network
+from src.experiment_logger import get_experiment_dir, save_config_used, save_training_stats
 
 
 # ---------------------------------------------------------------------------
@@ -57,9 +58,9 @@ def load_configs():
     return sim_config_full, neat_config
 
 
-def find_latest_checkpoint():
+def find_latest_checkpoint(results_dir):
     """Return the checkpoint path with the highest generation number, or None."""
-    prefix = os.path.join(RESULTS_DIR, "neat-checkpoint-")
+    prefix = os.path.join(results_dir, "neat-checkpoint-")
     files = glob.glob(f"{prefix}*")
     if not files:
         return None
@@ -121,6 +122,9 @@ def main():
     sim_config_full, neat_config = load_configs()
     sim_cfg = sim_config_full["simulation"]
     runtime_cfg = sim_config_full["neat_runtime"]
+    
+    experiment_dir = get_experiment_dir(RESULTS_DIR, sim_config_full)
+    print(f"Experiment outputs will be saved to: {experiment_dir}")
 
     simulator = LunarSimulation(sim_cfg)
     worker_fn = _Worker(simulator)
@@ -131,7 +135,7 @@ def main():
 
     # Build or restore population
     if runtime_cfg.get("resume_from_latest_checkpoint", False):
-        checkpoint_file = find_latest_checkpoint()
+        checkpoint_file = find_latest_checkpoint(experiment_dir)
         if checkpoint_file:
             print(f"Restoring from checkpoint: {checkpoint_file}")
             pop = neat.Checkpointer.restore_checkpoint(checkpoint_file)
@@ -150,7 +154,7 @@ def main():
     pop.add_reporter(
         neat.Checkpointer(
             generation_interval=runtime_cfg.get("checkpoint_generation_interval", 10),
-            filename_prefix=os.path.join(RESULTS_DIR, "neat-checkpoint-"),
+            filename_prefix=os.path.join(experiment_dir, "neat-checkpoint-"),
         )
     )
 
@@ -164,8 +168,13 @@ def main():
     print(f"\nBest genome fitness: {winner.fitness:.2f}")
 
     # Post-training visualizations
-    plot_fitness_history(stats, filename=os.path.join(RESULTS_DIR, "fitness_history.png"))
-    visualize_network(neat_config, winner, filename=os.path.join(RESULTS_DIR, "winner_network.png"))
+    save_config_used(sim_config_full, filename=os.path.join(experiment_dir, "config_used.json"))
+
+    save_training_stats(stats, filename=os.path.join(experiment_dir, "training_stats.csv"))
+
+    plot_fitness_history(stats, filename=os.path.join(experiment_dir, "fitness_history.png"))
+
+    visualize_network(neat_config, winner, filename=os.path.join(experiment_dir, "winner_network.png"))
 
     # Render the winner
     print("\n--- Rendering winner genome ---")
