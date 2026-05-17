@@ -1,5 +1,8 @@
 # Ewolucja sieci neuronowych w środowisku Lunar Lander (NEAT)
 
+**English version:** [README_ENG.md](README_ENG.md)  
+**Szczegółowa analiza eksperymentów:** [EXPERIMENTS.md](EXPERIMENTS.md)
+
 ## Opis i Cel Projektu
 
 Projekt badawczy poświęcony jest analizie procesów neuroewolucyjnych z wykorzystaniem algorytmu **NEAT (NeuroEvolution of Augmenting Topologies)**. Głównym celem jest wyhodowanie autonomicznego agenta (lądownika), który nauczy się bezpiecznego i precyzyjnego lądowania na nieregularnym podłożu w symulacji **Lunar Lander** (dostarczanej przez bibliotekę *Gymnasium*).
