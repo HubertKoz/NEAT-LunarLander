@@ -4,7 +4,7 @@
     "num_eval_runs": 3,
     "use_fixed_seeds": true,
     "fixed_seeds": [42, 123, 999],
-    "fitness_strategy": "penalty_angle"
+    "fitness_strategy": "default"
   },
   "neat_runtime": {
     "checkpoint_generation_interval": 10,

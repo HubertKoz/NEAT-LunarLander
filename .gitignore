@@ -27,4 +27,14 @@ Desktop.ini
 
 # Logs & outputs
 *.log
-results/
+
+# Keep experiment summaries and plots
+!results/
+!results/**/
+!results/**/*.png
+!results/**/*.csv
+!results/**/*.json
+!results/**/*.md
+
+# Do not commit NEAT checkpoints
+results/**/neat-checkpoint-*
